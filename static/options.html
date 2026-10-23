@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>PR Heatmap – Options</title>
+  <style>
+    body { max-width: 560px; margin: 40px auto; padding: 0 16px; font: 14px/1.5 system-ui, sans-serif; }
+    input { width: 100%; box-sizing: border-box; padding: 6px 8px; font: inherit; }
+    .row { display: flex; gap: 8px; margin-top: 12px; }
+    #status { min-height: 1.5em; color: #59636e; }
+    code { font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>PR Heatmap</h1>
+  <p>
+    No setup is needed: the heatmap reads pull requests with your existing GitHub login, so any PR you
+    can open works, including private repositories where you're a collaborator.
+  </p>
+  <p>
+    Optionally, add a token to use the GitHub REST API instead. It handles merge commits better, so a few
+    more lines get colored on PRs that merged their base branch in. Use a <strong>fine-grained token</strong>
+    with read-only <em>Contents</em> and <em>Pull requests</em> access, or a <strong>classic token</strong>
+    with the <code>repo</code> scope for repositories owned by another user. The token is stored in this
+    browser only and is only sent to <code>api.github.com</code>.
+  </p>
+  <label for="token">Personal access token (optional)</label>
+  <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_… or ghp_…">
+  <div class="row">
+    <button id="save" type="button">Save and test</button>
+    <button id="clear" type="button">Remove token</button>
+  </div>
+  <p id="status" role="status"></p>
+  <script src="options.js"></script>
+</body>
+</html>

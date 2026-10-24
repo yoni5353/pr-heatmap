@@ -34,6 +34,17 @@ function commitTexts(change: CommitChanges, paths: string[], marker: "+" | "-"):
   return texts;
 }
 
+/** `paths` plus every name the file had earlier in the PR, following renames backwards. */
+function pathHistory(changes: CommitChanges[], paths: string[]): string[] {
+  const names = new Set(paths);
+  for (let i = changes.length - 1; i >= 0; i--) {
+    for (const file of changes[i]!.files) {
+      if (file.previous_filename && names.has(file.filename)) names.add(file.previous_filename);
+    }
+  }
+  return [...names];
+}
+
 /**
  * Attributes the PR diff's added and deleted lines to `commits` (oldest first), whose
  * per-commit changes are `changes`. A line is only kept if its commit really added (or
@@ -72,7 +83,7 @@ export function buildResult(
   for (const file of prFiles) {
     const hunks = prHunks.get(file.filename);
     if (!hunks) continue;
-    const paths = [file.filename, basePath(file)];
+    const paths = pathHistory(changes, [file.filename, basePath(file)]);
     const added = verified(
       attributeLines(addedLines(hunks), attribution.added.get(file.filename) ?? new Map()),
       lineTexts(hunks, "+"),

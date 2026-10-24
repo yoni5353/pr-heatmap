@@ -1,7 +1,7 @@
 import type { CommitChanges, CommitFileChange } from "./attribution";
-import { buildResult } from "./heat";
 import { GitHubError, getJson, getPaginated, getToken, mapLimited } from "./github-api";
 import { fetchPatchSeries, fetchPrDiff } from "./github-session";
+import { buildResult } from "./heat";
 import type { HeatCommit, HeatResponse, HeatResult, PrRef, Request } from "./messages";
 import { parseGitDiff, parsePatchSeries } from "./patch-series";
 
@@ -15,60 +15,24 @@ interface ApiCommit {
   commit: { message: string; author: { name: string; date: string } | null };
 }
 
-type ApiFile = CommitFileChange;
-
 // Commit contents are immutable, so they can be shared across PRs for the worker's lifetime.
 const commitCache = new Map<string, Promise<CommitChanges>>();
 const inFlight = new Map<string, Promise<HeatResult>>();
 
-function prPath(pr: PrRef): string {
-  return `/repos/${pr.owner}/${pr.repo}`;
+function cacheKey(pr: PrRef, version: string): string {
+  return `${CACHE_PREFIX}${pr.owner}/${pr.repo}#${pr.number}@${version}`;
 }
 
-function getCommitChanges(pr: PrRef, sha: string, token: string | undefined): Promise<CommitChanges> {
-  let pending = commitCache.get(sha);
-  if (!pending) {
-    pending = getPaginated<ApiFile, { files: ApiFile[] }>(
-      `${prPath(pr)}/commits/${sha}?per_page=100`,
-      token,
-      (page) => page.files,
-    ).then((files) => ({ files }));
-    pending.catch(() => commitCache.delete(sha));
-    commitCache.set(sha, pending);
-  }
-  return pending;
+async function cacheGet(key: string): Promise<HeatResult | undefined> {
+  return (await chrome.storage.local.get(key))[key] as HeatResult | undefined;
 }
 
-/** Walks first parents back from head, staying inside the PR's commits. Oldest first. */
-function firstParentChain(commits: ApiCommit[], headSha: string): ApiCommit[] {
-  const bySha = new Map(commits.map((c) => [c.sha, c]));
-  const chain: ApiCommit[] = [];
-  for (let c = bySha.get(headSha); c; c = c.parents[0] && bySha.get(c.parents[0].sha)) {
-    chain.push(c);
-  }
-  return chain.reverse();
-}
-
-/** REST API source: needs a token for private repos, follows first parents through merges. */
-async function computeFromApi(pr: PrRef, headSha: string, token: string | undefined): Promise<HeatResult> {
-  const base = prPath(pr);
-  const [prCommits, prFiles] = await Promise.all([
-    getPaginated<ApiCommit>(`${base}/pulls/${pr.number}/commits?per_page=100`, token),
-    getPaginated<ApiFile>(`${base}/pulls/${pr.number}/files?per_page=100`, token),
-  ]);
-  const chain = firstParentChain(prCommits, headSha);
-  const changes = await mapLimited(chain, (c) => getCommitChanges(pr, c.sha, token));
-  const commits: HeatCommit[] = chain.map((c) => ({
-    sha: c.sha,
-    message: c.commit.message.split("\n")[0] ?? "",
-    date: c.commit.author?.date ?? "",
-    author: c.commit.author?.name ?? "",
-  }));
-  return buildResult(headSha, commits, changes, prFiles);
-}
-
-function cacheKey(pr: PrRef, headSha: string): string {
-  return `${CACHE_PREFIX}${pr.owner}/${pr.repo}#${pr.number}@${headSha}`;
+async function cachePut(key: string, result: HeatResult): Promise<void> {
+  const index = ((await chrome.storage.local.get(CACHE_INDEX))[CACHE_INDEX] as string[] | undefined) ?? [];
+  const next = [key, ...index.filter((k) => k !== key)];
+  const evicted = next.splice(CACHE_LIMIT);
+  await chrome.storage.local.set({ [key]: result, [CACHE_INDEX]: next });
+  if (evicted.length) await chrome.storage.local.remove(evicted);
 }
 
 /** Returns the cached result for `key`, else computes it once even if asked concurrently. */
@@ -88,39 +52,75 @@ async function cachedOrCompute(key: string, compute: () => Promise<HeatResult>):
   return pending;
 }
 
-async function getHeatWithToken(pr: PrRef, token: string): Promise<HeatResult> {
-  const pull = await getJson<{ head: { sha: string } }>(`${prPath(pr)}/pulls/${pr.number}`, token);
-  return cachedOrCompute(cacheKey(pr, pull.head.sha), () => computeFromApi(pr, pull.head.sha, token));
+function repoPath(pr: PrRef): string {
+  return `/repos/${pr.owner}/${pr.repo}`;
+}
+
+function getCommitChanges(pr: PrRef, sha: string, token: string): Promise<CommitChanges> {
+  let pending = commitCache.get(sha);
+  if (!pending) {
+    pending = getPaginated<CommitFileChange, { files: CommitFileChange[] }>(
+      `${repoPath(pr)}/commits/${sha}?per_page=100`,
+      token,
+      (page) => page.files,
+    ).then((files) => ({ files }));
+    pending.catch(() => commitCache.delete(sha));
+    commitCache.set(sha, pending);
+  }
+  return pending;
+}
+
+/** Walks first parents back from head, staying inside the PR's commits. Oldest first. */
+function firstParentChain(commits: ApiCommit[], headSha: string): ApiCommit[] {
+  const bySha = new Map(commits.map((c) => [c.sha, c]));
+  const chain: ApiCommit[] = [];
+  for (let c = bySha.get(headSha); c; c = c.parents[0] && bySha.get(c.parents[0].sha)) {
+    chain.push(c);
+  }
+  return chain.reverse();
 }
 
 /**
- * Session source: reads `pull/{n}.patch` and `.diff` with the browser's GitHub login, so it
- * needs no token. `format-patch` leaves out merge commits, so PRs that merged their base
- * branch in may be attributed less accurately than through the API.
+ * REST API source. Follows the first-parent chain, so edits made inside merge commits
+ * (e.g. conflict resolutions) are attributed to the merge. GitHub omits patches for very
+ * large files, which then stay untinted.
+ */
+async function getHeatWithToken(pr: PrRef, token: string): Promise<HeatResult> {
+  const base = repoPath(pr);
+  const pull = await getJson<{ head: { sha: string } }>(`${base}/pulls/${pr.number}`, token);
+  const headSha = pull.head.sha;
+  return cachedOrCompute(cacheKey(pr, headSha), async () => {
+    const [prCommits, prFiles] = await Promise.all([
+      getPaginated<ApiCommit>(`${base}/pulls/${pr.number}/commits?per_page=100`, token),
+      getPaginated<CommitFileChange>(`${base}/pulls/${pr.number}/files?per_page=100`, token),
+    ]);
+    const chain = firstParentChain(prCommits, headSha);
+    const changes = await mapLimited(chain, (c) => getCommitChanges(pr, c.sha, token));
+    const commits: HeatCommit[] = chain.map((c) => ({
+      sha: c.sha,
+      message: c.commit.message.split("\n")[0] ?? "",
+      date: c.commit.author?.date ?? "",
+      author: c.commit.author?.name ?? "",
+    }));
+    return buildResult(headSha, commits, changes, prFiles);
+  });
+}
+
+/**
+ * Session source: reads `pull/{n}.patch` and `.diff` with the browser's GitHub login. The
+ * series has no merge commits, so edits made inside a merge stay untinted.
  */
 async function getHeatWithSession(pr: PrRef): Promise<HeatResult> {
   const [patchText, diffText] = await Promise.all([fetchPatchSeries(pr), fetchPrDiff(pr)]);
   const series = parsePatchSeries(patchText);
   const head = series.at(-1);
-  if (!head) throw new GitHubError("the PR's .patch has no commits", 0);
+  if (!head) throw new Error("the PR's .patch has no commits");
   // The series omits merge commits, so a pushed merge leaves `head` unchanged; the diff
   // size catches that (and a merge that changes nothing in the diff changes no heat).
   return cachedOrCompute(cacheKey(pr, `${head.sha}:${diffText.length}`), async () => {
     const commits: HeatCommit[] = series.map(({ sha, message, date, author }) => ({ sha, message, date, author }));
     return buildResult(head.sha, commits, series, parseGitDiff(diffText));
   });
-}
-
-async function cacheGet(key: string): Promise<HeatResult | undefined> {
-  return (await chrome.storage.local.get(key))[key] as HeatResult | undefined;
-}
-
-async function cachePut(key: string, result: HeatResult): Promise<void> {
-  const index = ((await chrome.storage.local.get(CACHE_INDEX))[CACHE_INDEX] as string[] | undefined) ?? [];
-  const next = [key, ...index.filter((k) => k !== key)];
-  const evicted = next.splice(CACHE_LIMIT);
-  await chrome.storage.local.set({ [key]: result, [CACHE_INDEX]: next });
-  if (evicted.length) await chrome.storage.local.remove(evicted);
 }
 
 async function getHeat(pr: PrRef): Promise<HeatResult> {
@@ -132,8 +132,8 @@ async function handleGetHeat(pr: PrRef): Promise<HeatResponse> {
   try {
     return { ok: true, result: await getHeat(pr) };
   } catch (e) {
-    const status = e instanceof GitHubError ? e.status : 0;
-    const needsToken = status === 401 || status === 403 || status === 404;
+    // A token that can't see the repo, or a session without access: point at the options.
+    const needsToken = e instanceof GitHubError ? [401, 403, 404].includes(e.status) : !(await getToken());
     return { ok: false, error: e instanceof Error ? e.message : String(e), needsToken };
   }
 }

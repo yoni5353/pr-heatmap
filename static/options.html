@@ -14,15 +14,15 @@
 <body>
   <h1>PR Heatmap</h1>
   <p>
-    No setup is needed: the heatmap reads pull requests with your existing GitHub login, so any PR you
-    can open works, including private repositories where you're a collaborator.
+    Without a token, the heatmap reads pull requests with your existing GitHub login, so any PR you can
+    open works, including private repositories where you're a collaborator.
   </p>
   <p>
-    Optionally, add a token to use the GitHub REST API instead. It handles merge commits better, so a few
-    more lines get colored on PRs that merged their base branch in. Use a <strong>fine-grained token</strong>
-    with read-only <em>Contents</em> and <em>Pull requests</em> access, or a <strong>classic token</strong>
-    with the <code>repo</code> scope for repositories owned by another user. The token is stored in this
-    browser only and is only sent to <code>api.github.com</code>.
+    With a token, it uses the GitHub REST API instead. That also covers edits made inside merge commits,
+    such as conflict resolutions. Use a <strong>fine-grained token</strong> with read-only
+    <em>Contents</em> and <em>Pull requests</em> access, or a <strong>classic token</strong> with the
+    <code>repo</code> scope for repositories owned by another user. The token is stored in this browser
+    only and is only sent to <code>api.github.com</code>.
   </p>
   <label for="token">Personal access token (optional)</label>
   <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_… or ghp_…">

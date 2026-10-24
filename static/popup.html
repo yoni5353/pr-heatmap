@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>PR Heatmap</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --fg: #1f2328;
+      --muted: #59636e;
+      --bg: #ffffff;
+      --border: #d1d9e0;
+      --button-bg: #f6f8fa;
+      --button-hover: #eff2f5;
+      --accent: #0969da;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --fg: #f0f6fc;
+        --muted: #9198a1;
+        --bg: #0d1117;
+        --border: #3d444d;
+        --button-bg: #212830;
+        --button-hover: #262c36;
+        --accent: #4493f8;
+      }
+    }
+    body {
+      width: 320px;
+      margin: 0;
+      padding: 12px 16px 16px;
+      background: var(--bg);
+      color: var(--fg);
+      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    h1 { margin: 0 0 4px; font-size: 14px; }
+    p { margin: 0 0 10px; color: var(--muted); }
+    #mode { color: var(--fg); }
+    label { display: block; margin-bottom: 4px; font-weight: 600; }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 5px 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--fg);
+      font: inherit;
+    }
+    input:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+    .row { display: flex; gap: 8px; margin-top: 8px; }
+    button {
+      height: 28px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--button-bg);
+      color: var(--fg);
+      font: inherit;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    button:hover { background: var(--button-hover); }
+    #status { min-height: 1.45em; margin: 8px 0 0; }
+    details { margin-top: 10px; color: var(--muted); }
+    summary { cursor: pointer; }
+    code { font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>PR Heatmap</h1>
+  <p id="mode">Using your GitHub login.</p>
+  <label for="token">Personal access token (optional)</label>
+  <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_… or ghp_…">
+  <div class="row">
+    <button id="save" type="button">Save and test</button>
+    <button id="clear" type="button">Remove token</button>
+  </div>
+  <p id="status" role="status"></p>
+  <details>
+    <summary>Do I need a token?</summary>
+    <p>
+      No. Without one, PRs are read with your GitHub login, including private repos you collaborate on.
+      With one, the GitHub API is used, which also tints edits made inside merge commits.
+    </p>
+    <p>
+      Use a fine-grained token with read-only <em>Contents</em> and <em>Pull requests</em> access, or a
+      classic token with <code>repo</code> for repos owned by another user. It's stored in this browser
+      and only sent to <code>api.github.com</code>.
+    </p>
+  </details>
+  <script src="popup.js"></script>
+</body>
+</html>

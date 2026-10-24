@@ -7,7 +7,7 @@ There are two ways to read pull requests:
 - **Session (default, no setup):** the extension reads the PR's
   `github.com/…/pull/{n}.patch` and `.diff` with your existing GitHub login, so any PR you
   can open works, including private repositories where you're a collaborator.
-- **Token (optional, set in the extension's options):** the extension uses the GitHub REST
+- **Token (optional, set in the popup from the extension's toolbar icon):** the extension uses the GitHub REST
   API instead. See [Why the API is still worth having](#why-the-api-is-still-worth-having).
   - **Fine-grained token**: read-only *Contents* and *Pull requests* access to the
     repositories you review.

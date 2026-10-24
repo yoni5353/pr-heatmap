@@ -24,7 +24,7 @@ export interface HeatResult {
 
 export type Request =
   | { type: "getHeat"; pr: PrRef }
-  | { type: "openOptions" };
+  | { type: "openPopup" };
 
 export type HeatResponse =
   | { ok: true; result: HeatResult }

@@ -8,7 +8,7 @@ await mkdir("dist", { recursive: true });
 await cp("static", "dist", { recursive: true });
 
 const options = {
-  entryPoints: ["src/background.ts", "src/content.ts", "src/options.ts"],
+  entryPoints: ["src/background.ts", "src/content.ts", "src/popup.ts"],
   outdir: "dist",
   bundle: true,
   format: "iife",

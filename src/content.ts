@@ -151,7 +151,10 @@ function showError(response: Extract<HeatResponse, { ok: false }>): void {
       button.type = "button";
       button.className = "prh-control-button";
       button.textContent = "Set token";
-      button.addEventListener("click", () => void send({ type: "openOptions" }));
+      button.addEventListener("click", async () => {
+        const opened = await send<boolean>({ type: "openPopup" }).catch(() => false);
+        if (!opened) button.textContent = "Click the PR Heatmap icon in the toolbar";
+      });
       el.append(button);
     }
   });

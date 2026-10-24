@@ -132,7 +132,7 @@ async function handleGetHeat(pr: PrRef): Promise<HeatResponse> {
   try {
     return { ok: true, result: await getHeat(pr) };
   } catch (e) {
-    // A token that can't see the repo, or a session without access: point at the options.
+    // A token that can't see the repo, or a session without access: point at the popup.
     const needsToken = e instanceof GitHubError ? [401, 403, 404].includes(e.status) : !(await getToken());
     return { ok: false, error: e instanceof Error ? e.message : String(e), needsToken };
   }
@@ -143,8 +143,13 @@ chrome.runtime.onMessage.addListener((msg: Request, _sender, sendResponse) => {
     handleGetHeat(msg.pr).then(sendResponse);
     return true;
   }
-  if (msg.type === "openOptions") {
-    chrome.runtime.openOptionsPage();
+  if (msg.type === "openPopup") {
+    // Not every browser version allows opening the popup programmatically.
+    chrome.action.openPopup().then(
+      () => sendResponse(true),
+      () => sendResponse(false),
+    );
+    return true;
   }
   return false;
 });
